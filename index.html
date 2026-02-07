@@ -21,6 +21,7 @@
             <div class="nav-links">
                 <a href="#home" class="active">Home</a>
                 <a href="#platform">Platform</a>
+                <a href="#dashboard">Dashboard</a>
                 <a href="#results">Resultaten</a>
                 <a href="#roi">ROI</a>
                 <a href="#pricing">Pricing</a>
@@ -112,6 +113,66 @@
                 <div class="platform-card reveal"><i class="fas fa-bolt"></i><h3>Energie regie</h3><p>Stuur op energieverbruik, CO2 targets en duurzaamheidsrapportages.</p></div>
                 <div class="platform-card reveal"><i class="fas fa-people-roof"></i><h3>Werkplekbeleving</h3><p>Combineer bezetting, comfort en service voor hogere tevredenheid.</p></div>
                 <div class="platform-card reveal"><i class="fas fa-shield-halved"></i><h3>Compliance</h3><p>Automatische checklists en audit trails die altijd klaar zijn.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="dashboard" class="dashboard">
+        <div class="section-container">
+            <div class="section-head">
+                <p class="kicker">Live operations</p>
+                <h2 class="section-title">Realtime dashboard voor je dagelijkse operatie.</h2>
+                <p class="section-subtitle">Kies een portfolio, zie KPI's live verschuiven en volg events zoals in een echte control room.</p>
+            </div>
+            <div class="dashboard-shell reveal">
+                <div class="dashboard-toolbar">
+                    <label for="dashboardScope">Scope</label>
+                    <select id="dashboardScope">
+                        <option value="all">Alle locaties</option>
+                        <option value="office">Kantoren</option>
+                        <option value="logistics">Logistiek</option>
+                        <option value="residential">Wonen</option>
+                    </select>
+                    <p class="dashboard-live">Live update: <span id="dashboardLiveStamp">nu</span></p>
+                </div>
+                <div class="dashboard-grid">
+                    <article class="dash-kpi">
+                        <p>Open tickets</p>
+                        <h3 id="kpiTickets">0</h3>
+                        <small id="kpiTicketsDelta">0 vs gisteren</small>
+                    </article>
+                    <article class="dash-kpi">
+                        <p>Gem. oplostijd</p>
+                        <h3><span id="kpiResolve">0</span> min</h3>
+                        <small id="kpiResolveDelta">0% verandering</small>
+                    </article>
+                    <article class="dash-kpi">
+                        <p>Energie-index</p>
+                        <h3><span id="kpiEnergy">0</span></h3>
+                        <small id="kpiEnergyDelta">0% besparing</small>
+                    </article>
+                    <article class="dash-kpi">
+                        <p>SLA-compliance</p>
+                        <h3><span id="kpiSla">0</span>%</h3>
+                        <small id="kpiSlaDelta">0 kritieke alerts</small>
+                    </article>
+                </div>
+                <div class="dashboard-panels">
+                    <div class="dash-trend">
+                        <div class="dash-panel-head">
+                            <h3>Tickettrend (laatste 12 uur)</h3>
+                            <span id="trendSummary">stabiel</span>
+                        </div>
+                        <svg id="trendChart" viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="Trendgrafiek"></svg>
+                    </div>
+                    <div class="dash-feed">
+                        <div class="dash-panel-head">
+                            <h3>Event feed</h3>
+                            <span>Realtime</span>
+                        </div>
+                        <ul id="eventFeed"></ul>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
