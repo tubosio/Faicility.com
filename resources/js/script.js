@@ -1,249 +1,421 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const navbar = document.querySelector('.navbar');
-    const menuBtn = document.querySelector('.mobile-menu-btn');
-    const navLinks = document.querySelectorAll('.nav-links a');
-    const sections = document.querySelectorAll('section, header');
+(() => {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
 
-    if (menuBtn) {
-        menuBtn.addEventListener('click', () => {
-            navbar.classList.toggle('nav-open');
-        });
-    }
+    const timerDisplay = document.getElementById('timerDisplay');
+    const alertDisplay = document.getElementById('alertDisplay');
+    const statusDisplay = document.getElementById('statusDisplay');
+    const missionTitle = document.getElementById('missionTitle');
+    const missionHint = document.getElementById('missionHint');
+    const taskList = document.getElementById('taskList');
+    const eventLog = document.getElementById('eventLog');
 
-    navLinks.forEach((link) => {
-        link.addEventListener('click', () => {
-            navbar.classList.remove('nav-open');
-        });
-    });
+    const startOverlay = document.getElementById('startOverlay');
+    const endOverlay = document.getElementById('endOverlay');
+    const endTag = document.getElementById('endTag');
+    const endTitle = document.getElementById('endTitle');
+    const endSummary = document.getElementById('endSummary');
+    const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
 
-    const onScroll = () => {
-        if (window.scrollY > 20) {
-            navbar.classList.add('scrolled');
-        } else {
-            navbar.classList.remove('scrolled');
+    const keys = new Set();
+    let running = false;
+    let finished = false;
+    let lastTs = 0;
+
+    const state = {
+        timeLeft: 420,
+        alert: 0,
+        player: { x: 72, y: 480, r: 11, speed: 170 },
+        tasks: [
+            { id: 'power', room: 'B1 Energie', x: 188, y: 448, title: 'Herstel noodstroom', hint: 'Interact bij de power console', done: false },
+            { id: 'filter', room: 'Klimaatkern', x: 330, y: 306, title: 'Kalibreer luchtfilters', hint: 'Activeer filterpaneel', done: false },
+            { id: 'server', room: 'Data Node', x: 532, y: 154, title: 'Reboot servers', hint: 'Reset de servercluster', done: false },
+            { id: 'vault', room: 'Security Vault', x: 770, y: 186, title: 'Haal keycard op', hint: 'Pak de keycard uit vault-lade', done: false },
+            { id: 'bridge', room: 'Control Bridge', x: 790, y: 395, title: 'Upload missie rapport', hint: 'Finaliseer op command terminal', done: false }
+        ],
+        drones: [
+            { x: 258, y: 175, dir: 1, range: [205, 382], axis: 'x', speed: 82 },
+            { x: 622, y: 360, dir: 1, range: [295, 470], axis: 'y', speed: 92 },
+            { x: 688, y: 122, dir: 1, range: [590, 860], axis: 'x', speed: 95 }
+        ],
+        walls: [
+            { x: 0, y: 0, w: 960, h: 22 },
+            { x: 0, y: 518, w: 960, h: 22 },
+            { x: 0, y: 0, w: 22, h: 540 },
+            { x: 938, y: 0, w: 22, h: 540 },
+            { x: 136, y: 22, w: 14, h: 360 },
+            { x: 136, y: 420, w: 14, h: 98 },
+            { x: 310, y: 160, w: 14, h: 358 },
+            { x: 492, y: 22, w: 14, h: 330 },
+            { x: 492, y: 392, w: 14, h: 126 },
+            { x: 662, y: 112, w: 14, h: 406 },
+            { x: 662, y: 22, w: 14, h: 50 },
+            { x: 832, y: 22, w: 14, h: 358 },
+            { x: 220, y: 254, w: 90, h: 14 },
+            { x: 506, y: 252, w: 156, h: 14 }
+        ]
+    };
+
+    const roomZones = [
+        { x: 22, y: 22, w: 114, h: 496, label: 'Entree Corridor' },
+        { x: 150, y: 360, w: 160, h: 158, label: 'B1 Energie' },
+        { x: 150, y: 22, w: 160, h: 328, label: 'Klimaatkern' },
+        { x: 324, y: 22, w: 168, h: 496, label: 'Data Node' },
+        { x: 506, y: 266, w: 156, h: 252, label: 'Operations' },
+        { x: 506, y: 22, w: 156, h: 230, label: 'Security Vault' },
+        { x: 676, y: 22, w: 156, h: 496, label: 'Control Bridge' },
+        { x: 846, y: 22, w: 92, h: 496, label: 'Service Bay' }
+    ];
+
+    const touchState = { up: false, down: false, left: false, right: false };
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    const logEvent = (message) => {
+        const li = document.createElement('li');
+        const stamp = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+        li.textContent = `[${stamp}] ${message}`;
+        eventLog.prepend(li);
+        while (eventLog.children.length > 8) {
+            eventLog.removeChild(eventLog.lastChild);
         }
     };
 
-    window.addEventListener('scroll', onScroll);
-    onScroll();
+    const resetState = () => {
+        state.timeLeft = 420;
+        state.alert = 0;
+        state.player.x = 72;
+        state.player.y = 480;
+        state.tasks.forEach((task) => {
+            task.done = false;
+        });
+        finished = false;
+        renderTasks();
+        updateHud();
+        missionTitle.textContent = state.tasks[0].title;
+        missionHint.textContent = `${state.tasks[0].room}: ${state.tasks[0].hint}`;
+        eventLog.innerHTML = '';
+        logEvent('Missiebrief ontvangen. Facility toegang verleend.');
+    };
 
-    const revealItems = document.querySelectorAll('.reveal');
-    const revealObserver = new IntersectionObserver(
-        (entries) => {
-            entries.forEach((entry) => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('is-visible');
-                    revealObserver.unobserve(entry.target);
-                }
-            });
-        },
-        { threshold: 0.2 }
-    );
+    const renderTasks = () => {
+        taskList.innerHTML = '';
+        state.tasks.forEach((task, index) => {
+            const item = document.createElement('li');
+            item.className = task.done ? 'done' : '';
+            item.textContent = `${index + 1}. ${task.title} (${task.room})`;
+            taskList.appendChild(item);
+        });
+    };
 
-    revealItems.forEach((item) => revealObserver.observe(item));
+    const updateHud = () => {
+        const mins = Math.floor(state.timeLeft / 60);
+        const secs = Math.floor(state.timeLeft % 60);
+        timerDisplay.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
-    const sectionObserver = new IntersectionObserver(
-        (entries) => {
-            entries.forEach((entry) => {
-                if (entry.isIntersecting) {
-                    const id = entry.target.getAttribute('id');
-                    navLinks.forEach((link) => {
-                        link.classList.toggle('active', link.getAttribute('href') === `#${id}`);
-                    });
-                }
-            });
-        },
-        { threshold: 0.45 }
-    );
+        const alertClamped = clamp(Math.round(state.alert), 0, 100);
+        alertDisplay.textContent = `${alertClamped}%`;
 
-    sections.forEach((section) => {
-        if (section.getAttribute('id')) {
-            sectionObserver.observe(section);
+        if (alertClamped < 35) {
+            statusDisplay.textContent = 'Stealth';
+            statusDisplay.style.color = '#89f0c9';
+        } else if (alertClamped < 75) {
+            statusDisplay.textContent = 'Opsporing';
+            statusDisplay.style.color = '#ffd17a';
+        } else {
+            statusDisplay.textContent = 'Lockdown';
+            statusDisplay.style.color = '#ff8686';
+        }
+    };
+
+    const getActiveTask = () => state.tasks.find((task) => !task.done) || null;
+
+    const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    const collides = (circle, rect) => {
+        const cx = clamp(circle.x, rect.x, rect.x + rect.w);
+        const cy = clamp(circle.y, rect.y, rect.y + rect.h);
+        const dx = circle.x - cx;
+        const dy = circle.y - cy;
+        return dx * dx + dy * dy < circle.r * circle.r;
+    };
+
+    const tryMovePlayer = (dx, dy, dt) => {
+        if (!dx && !dy) return;
+
+        const len = Math.hypot(dx, dy) || 1;
+        const step = state.player.speed * dt;
+
+        let nextX = state.player.x + (dx / len) * step;
+        let nextY = state.player.y;
+        const testX = { x: nextX, y: nextY, r: state.player.r };
+        if (!state.walls.some((w) => collides(testX, w))) {
+            state.player.x = nextX;
+        }
+
+        nextX = state.player.x;
+        nextY = state.player.y + (dy / len) * step;
+        const testY = { x: nextX, y: nextY, r: state.player.r };
+        if (!state.walls.some((w) => collides(testY, w))) {
+            state.player.y = nextY;
+        }
+    };
+
+    const updateDrones = (dt) => {
+        state.drones.forEach((drone) => {
+            drone[drone.axis] += drone.dir * drone.speed * dt;
+            if (drone[drone.axis] < drone.range[0] || drone[drone.axis] > drone.range[1]) {
+                drone.dir *= -1;
+                drone[drone.axis] = clamp(drone[drone.axis], drone.range[0], drone.range[1]);
+            }
+
+            const dist = Math.hypot(state.player.x - drone.x, state.player.y - drone.y);
+            if (dist < 90) {
+                state.alert += (90 - dist) * 0.015;
+            }
+        });
+
+        state.alert = clamp(state.alert - 0.12 * dt * 60, 0, 120);
+    };
+
+    const completeTaskIfPossible = () => {
+        if (!running || finished) return;
+
+        const active = getActiveTask();
+        if (!active) return;
+
+        const dist = Math.hypot(state.player.x - active.x, state.player.y - active.y);
+        if (dist > 34) {
+            missionHint.textContent = 'Te ver van de objective. Beweeg dichterbij.';
+            return;
+        }
+
+        active.done = true;
+        logEvent(`Objective afgerond: ${active.title}.`);
+        renderTasks();
+
+        const next = getActiveTask();
+        if (next) {
+            missionTitle.textContent = next.title;
+            missionHint.textContent = `${next.room}: ${next.hint}`;
+        } else {
+            finishMission(true);
+        }
+    };
+
+    const finishMission = (success) => {
+        if (finished) return;
+        finished = true;
+        running = false;
+
+        endOverlay.classList.remove('hidden');
+        if (success) {
+            endTag.textContent = 'Missie geslaagd';
+            endTitle.textContent = 'Facility onder controle';
+            const score = Math.max(0, Math.round(100 - state.alert + state.timeLeft * 0.3));
+            endSummary.textContent = `Score ${score}. Resterende tijd: ${Math.floor(state.timeLeft)}s, alert: ${Math.round(state.alert)}%.`;
+            logEvent('Upload bevestigd. Team extractie gestart.');
+        } else {
+            endTag.textContent = 'Missie mislukt';
+            endTitle.textContent = state.alert >= 100 ? 'Lockdown geactiveerd' : 'Tijd verlopen';
+            endSummary.textContent = 'Probeer een andere route en hou drones op afstand.';
+            logEvent('Missie afgebroken door security protocol.');
+        }
+    };
+
+    const drawBackground = () => {
+        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        grad.addColorStop(0, '#0d1722');
+        grad.addColorStop(1, '#081018');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = 'rgba(69, 104, 129, 0.15)';
+        ctx.lineWidth = 1;
+        for (let x = 22; x < canvas.width; x += 28) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+        for (let y = 22; y < canvas.height; y += 28) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+    };
+
+    const drawRooms = () => {
+        roomZones.forEach((room) => {
+            ctx.fillStyle = 'rgba(27, 42, 56, 0.35)';
+            ctx.fillRect(room.x, room.y, room.w, room.h);
+            ctx.strokeStyle = 'rgba(67, 98, 121, 0.42)';
+            ctx.strokeRect(room.x, room.y, room.w, room.h);
+            ctx.fillStyle = 'rgba(157, 190, 214, 0.66)';
+            ctx.font = '12px Rajdhani';
+            ctx.fillText(room.label, room.x + 8, room.y + 16);
+        });
+
+        ctx.fillStyle = '#30485d';
+        state.walls.forEach((wall) => {
+            ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+        });
+    };
+
+    const drawTasks = () => {
+        const active = getActiveTask();
+
+        state.tasks.forEach((task) => {
+            const pulse = 4 + Math.sin(performance.now() * 0.005) * 2;
+
+            if (task.done) {
+                ctx.fillStyle = 'rgba(83, 215, 159, 0.85)';
+                ctx.beginPath();
+                ctx.arc(task.x, task.y, 7, 0, Math.PI * 2);
+                ctx.fill();
+                return;
+            }
+
+            ctx.strokeStyle = task === active ? 'rgba(61, 225, 211, 0.98)' : 'rgba(97, 157, 196, 0.7)';
+            ctx.lineWidth = task === active ? 3 : 2;
+            ctx.beginPath();
+            ctx.arc(task.x, task.y, 12 + (task === active ? pulse : 0), 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(220, 243, 255, 0.95)';
+            ctx.font = 'bold 12px Rajdhani';
+            ctx.fillText(task.id.toUpperCase(), task.x - 15, task.y - 14);
+        });
+    };
+
+    const drawDrones = () => {
+        state.drones.forEach((drone) => {
+            const glow = ctx.createRadialGradient(drone.x, drone.y, 2, drone.x, drone.y, 60);
+            glow.addColorStop(0, 'rgba(247, 165, 49, 0.22)');
+            glow.addColorStop(1, 'rgba(247, 165, 49, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(drone.x, drone.y, 60, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#f7a531';
+            ctx.beginPath();
+            ctx.arc(drone.x, drone.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(255, 196, 114, 0.6)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(drone.x, drone.y, 18, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+    };
+
+    const drawPlayer = () => {
+        const glow = ctx.createRadialGradient(state.player.x, state.player.y, 2, state.player.x, state.player.y, 34);
+        glow.addColorStop(0, 'rgba(74, 199, 250, 0.42)');
+        glow.addColorStop(1, 'rgba(74, 199, 250, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(state.player.x, state.player.y, 34, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#45c9ff';
+        ctx.beginPath();
+        ctx.arc(state.player.x, state.player.y, state.player.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(160, 226, 255, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(state.player.x, state.player.y, state.player.r + 4, 0, Math.PI * 2);
+        ctx.stroke();
+    };
+
+    const tick = (ts) => {
+        if (!running) return;
+
+        const dt = Math.min((ts - lastTs) / 1000 || 0, 0.05);
+        lastTs = ts;
+
+        let dx = 0;
+        let dy = 0;
+
+        if (keys.has('arrowup') || keys.has('w') || touchState.up) dy -= 1;
+        if (keys.has('arrowdown') || keys.has('s') || touchState.down) dy += 1;
+        if (keys.has('arrowleft') || keys.has('a') || touchState.left) dx -= 1;
+        if (keys.has('arrowright') || keys.has('d') || touchState.right) dx += 1;
+
+        tryMovePlayer(dx, dy, dt);
+        updateDrones(dt);
+
+        state.timeLeft -= dt;
+        if (state.timeLeft <= 0 || state.alert >= 100) {
+            finishMission(false);
+        }
+
+        drawBackground();
+        drawRooms();
+        drawTasks();
+        drawDrones();
+        drawPlayer();
+
+        updateHud();
+
+        if (running) {
+            requestAnimationFrame(tick);
+        }
+    };
+
+    const startGame = () => {
+        resetState();
+        startOverlay.classList.add('hidden');
+        endOverlay.classList.add('hidden');
+        running = true;
+        lastTs = performance.now();
+        requestAnimationFrame(tick);
+    };
+
+    document.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+        keys.add(key);
+
+        if (key === 'e') {
+            completeTaskIfPossible();
         }
     });
 
-    const roiForm = document.getElementById('roiForm');
-    if (roiForm) {
-        const fmtEuro = new Intl.NumberFormat('nl-NL', {
-            style: 'currency',
-            currency: 'EUR',
-            maximumFractionDigits: 0
-        });
-        const fmtNum = new Intl.NumberFormat('nl-NL', {
-            maximumFractionDigits: 0
-        });
+    document.addEventListener('keyup', (event) => {
+        keys.delete(event.key.toLowerCase());
+    });
 
-        const savingsEl = document.getElementById('roiSavings');
-        const hoursEl = document.getElementById('roiHours');
-        const paybackEl = document.getElementById('roiPayback');
-        const adminPanelEl = document.getElementById('roiAdminPanel');
-        const resetAssumptionsEl = document.getElementById('roiResetAssumptions');
-
-        const assumptionDefaults = {
-            assumeBaseHours: 1.45,
-            assumeTimeReduction: 32,
-            assumeEnergySpend: 17.5,
-            assumeEnergyReduction: 12,
-            assumeBaseSub: 299,
-            assumePerLocation: 95
+    document.querySelectorAll('[data-dir]').forEach((btn) => {
+        const dir = btn.getAttribute('data-dir');
+        const press = (active) => {
+            touchState[dir] = active;
         };
 
-        const url = new URL(window.location.href);
-        const adminMode = url.searchParams.get('admin') === '1';
-        if (adminMode && adminPanelEl) {
-            adminPanelEl.hidden = false;
-        }
+        btn.addEventListener('pointerdown', () => press(true));
+        btn.addEventListener('pointerup', () => press(false));
+        btn.addEventListener('pointercancel', () => press(false));
+        btn.addEventListener('pointerleave', () => press(false));
+    });
 
-        const recalcRoi = () => {
-            const locations = Math.max(1, Number(roiForm.locations.value) || 1);
-            const meters = Math.max(500, Number(roiForm.meters.value) || 500);
-            const ticketsMonthly = Math.max(10, Number(roiForm.tickets.value) || 10);
-            const hourlyCost = Math.max(20, Number(roiForm.hourlyCost.value) || 20);
+    document.querySelector('[data-action="interact"]').addEventListener('pointerdown', () => {
+        completeTaskIfPossible();
+    });
 
-            const baseHoursPerTicket = Math.max(0.2, Number(roiForm.assumeBaseHours.value) || assumptionDefaults.assumeBaseHours);
-            const timeReduction = Math.max(0.01, Math.min(0.8, (Number(roiForm.assumeTimeReduction.value) || assumptionDefaults.assumeTimeReduction) / 100));
-            const yearlyHoursSaved = ticketsMonthly * 12 * baseHoursPerTicket * timeReduction;
+    startBtn.addEventListener('click', startGame);
+    restartBtn.addEventListener('click', startGame);
 
-            const energySpendPerM2 = Math.max(1, Number(roiForm.assumeEnergySpend.value) || assumptionDefaults.assumeEnergySpend);
-            const energyReduction = Math.max(0.01, Math.min(0.6, (Number(roiForm.assumeEnergyReduction.value) || assumptionDefaults.assumeEnergyReduction) / 100));
-            const yearlyEnergySaved = meters * energySpendPerM2 * energyReduction;
-
-            const yearlyLaborSaved = yearlyHoursSaved * hourlyCost;
-            const totalYearlySavings = yearlyLaborSaved + yearlyEnergySaved;
-
-            const monthlyBaseSubscription = Math.max(0, Number(roiForm.assumeBaseSub.value) || assumptionDefaults.assumeBaseSub);
-            const monthlyPerLocation = Math.max(0, Number(roiForm.assumePerLocation.value) || assumptionDefaults.assumePerLocation);
-            const monthlySubscription = monthlyBaseSubscription + locations * monthlyPerLocation;
-            const paybackMonths = Math.max(1, Math.round((monthlySubscription * 12 / totalYearlySavings) * 12));
-
-            savingsEl.textContent = fmtEuro.format(totalYearlySavings);
-            hoursEl.textContent = `${fmtNum.format(yearlyHoursSaved)} uur`;
-            paybackEl.textContent = `${fmtNum.format(paybackMonths)} maanden`;
-        };
-
-        if (resetAssumptionsEl) {
-            resetAssumptionsEl.addEventListener('click', () => {
-                Object.entries(assumptionDefaults).forEach(([key, value]) => {
-                    roiForm[key].value = String(value);
-                });
-                recalcRoi();
-            });
-        }
-
-        roiForm.addEventListener('input', recalcRoi);
-        recalcRoi();
-    }
-
-    const dashboardScope = document.getElementById('dashboardScope');
-    const trendChart = document.getElementById('trendChart');
-    const trendSummary = document.getElementById('trendSummary');
-    const liveStamp = document.getElementById('dashboardLiveStamp');
-    const eventFeed = document.getElementById('eventFeed');
-
-    if (dashboardScope && trendChart && trendSummary && liveStamp && eventFeed) {
-        const kpiTickets = document.getElementById('kpiTickets');
-        const kpiTicketsDelta = document.getElementById('kpiTicketsDelta');
-        const kpiResolve = document.getElementById('kpiResolve');
-        const kpiResolveDelta = document.getElementById('kpiResolveDelta');
-        const kpiEnergy = document.getElementById('kpiEnergy');
-        const kpiEnergyDelta = document.getElementById('kpiEnergyDelta');
-        const kpiSla = document.getElementById('kpiSla');
-        const kpiSlaDelta = document.getElementById('kpiSlaDelta');
-
-        const scopeProfiles = {
-            all: { tickets: 68, resolve: 116, energy: 82, sla: 98.6 },
-            office: { tickets: 42, resolve: 101, energy: 86, sla: 99.1 },
-            logistics: { tickets: 77, resolve: 129, energy: 80, sla: 97.8 },
-            residential: { tickets: 55, resolve: 111, energy: 84, sla: 98.2 }
-        };
-
-        const eventTemplates = [
-            'HVAC reset uitgevoerd op CityPoint.',
-            'Schoonmaak-ticket automatisch toegewezen.',
-            'Energiepiek gedetecteerd op verdieping 3.',
-            'Liftinspectie afgerond zonder afwijkingen.',
-            'Preventief onderhoud geactiveerd voor pomp B2.',
-            'Sensor offline: vergaderruimte North-14.'
-        ];
-
-        let trendSeries = [64, 59, 62, 60, 57, 52, 48, 53, 49, 46, 44, 41];
-        let current = { ...scopeProfiles.all };
-
-        const rnd = (min, max) => Math.random() * (max - min) + min;
-        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-        const updateKpis = () => {
-            const base = scopeProfiles[dashboardScope.value] || scopeProfiles.all;
-            current.tickets = Math.round(clamp(base.tickets + rnd(-6, 6), 18, 140));
-            current.resolve = Math.round(clamp(base.resolve + rnd(-10, 8), 60, 190));
-            current.energy = Math.round(clamp(base.energy + rnd(-3, 3), 60, 99));
-            current.sla = Number(clamp(base.sla + rnd(-0.6, 0.6), 93.5, 99.9).toFixed(1));
-
-            kpiTickets.textContent = String(current.tickets);
-            kpiResolve.textContent = String(current.resolve);
-            kpiEnergy.textContent = String(current.energy);
-            kpiSla.textContent = String(current.sla);
-
-            kpiTicketsDelta.textContent = `${Math.round(rnd(-8, 11))} vs gisteren`;
-            kpiResolveDelta.textContent = `${Math.round(rnd(-14, 9))}% verandering`;
-            kpiEnergyDelta.textContent = `${Math.round(rnd(7, 21))}% besparing`;
-            kpiSlaDelta.textContent = `${Math.max(0, Math.round(rnd(0, 3)))} kritieke alerts`;
-        };
-
-        const renderTrend = () => {
-            const width = 600;
-            const height = 190;
-            const pad = 16;
-            const min = Math.min(...trendSeries) - 4;
-            const max = Math.max(...trendSeries) + 4;
-
-            const points = trendSeries.map((v, i) => {
-                const x = pad + (i * (width - pad * 2)) / (trendSeries.length - 1);
-                const y = height - pad - ((v - min) * (height - pad * 2)) / (max - min || 1);
-                return `${x.toFixed(1)},${y.toFixed(1)}`;
-            });
-
-            const areaPoints = [`${pad},${height - pad}`, ...points, `${width - pad},${height - pad}`].join(' ');
-            const last = trendSeries[trendSeries.length - 1];
-            const prev = trendSeries[trendSeries.length - 2] || last;
-            trendSummary.textContent = last <= prev ? 'dalende ticketdruk' : 'licht stijgend';
-
-            trendChart.innerHTML = `
-                <polyline points="${areaPoints}" fill="rgba(10,147,150,0.16)" stroke="none"></polyline>
-                <polyline points="${points.join(' ')}" fill="none" stroke="#0a9396" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"></polyline>
-            `;
-        };
-
-        const addEvent = () => {
-            const scopeLabel = dashboardScope.options[dashboardScope.selectedIndex].text;
-            const item = document.createElement('li');
-            const stamp = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-            item.textContent = `[${stamp}] ${scopeLabel}: ${eventTemplates[Math.floor(Math.random() * eventTemplates.length)]}`;
-            eventFeed.prepend(item);
-            while (eventFeed.children.length > 6) {
-                eventFeed.removeChild(eventFeed.lastChild);
-            }
-            liveStamp.textContent = stamp;
-        };
-
-        const tickDashboard = () => {
-            updateKpis();
-            trendSeries.push(Math.round(clamp(current.tickets + rnd(-4, 4), 18, 140)));
-            if (trendSeries.length > 12) {
-                trendSeries.shift();
-            }
-            renderTrend();
-            addEvent();
-        };
-
-        dashboardScope.addEventListener('change', () => {
-            const base = scopeProfiles[dashboardScope.value] || scopeProfiles.all;
-            trendSeries = Array.from({ length: 12 }, (_, i) => Math.round(base.tickets + Math.sin(i / 1.8) * 6 + rnd(-3, 3)));
-            tickDashboard();
-        });
-
-        tickDashboard();
-        window.setInterval(tickDashboard, 3500);
-    }
-
-});
+    // Render static scene before game start.
+    drawBackground();
+    drawRooms();
+    drawTasks();
+    drawDrones();
+    drawPlayer();
+    renderTasks();
+    updateHud();
+})();
